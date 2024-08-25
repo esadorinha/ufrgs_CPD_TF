@@ -134,7 +134,7 @@ class Trie:
 # 1. TRATAMENTO INICIAL DOS DADOS;
 
 HASH_RATINGS_SIZE = 13001 # lembrar de alterar esse valor caso trocar de Miniratings para Ratings
-# HASH_RATINGS_SIZE = 180041 # valor da troca, baseado no número de usuários do arquivo grande
+# HASH_RATINGS_SIZE = 180043 # valor da troca, baseado no número de usuários do arquivo grande
 
 # Criação dos DataFrames a partir dos arquivos
 ratings = pd.read_csv('ufrgs_CPD_TF\minirating.csv')
