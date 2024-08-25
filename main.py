@@ -1,4 +1,5 @@
 import pandas as pd
+from tabulate import tabulate
 
 # ---------------------------------------- #
 # 0. FUNÇÕES DE USO GERAL;
@@ -11,7 +12,7 @@ def radix_sort(list):
         esc = [[], [], [], [], [], [], [], [], [], []]
 
         for j in range(len(list)):
-            buf = list[j]
+            buf = list[j]   # a lista é de tuplas (id, rating)
             d = int(buf[1]/exp) % 10
             esc[d].append(buf)
         
@@ -128,10 +129,12 @@ class Trie:
         return prefix_list
     
 
+
 # ---------------------------------------- #
 # 1. TRATAMENTO INICIAL DOS DADOS;
 
 HASH_RATINGS_SIZE = 13001 # lembrar de alterar esse valor caso trocar de Miniratings para Ratings
+# HASH_RATINGS_SIZE = 180041 # valor da troca, baseado no número de usuários do arquivo grande
 
 # Criação dos DataFrames a partir dos arquivos
 ratings = pd.read_csv('ufrgs_CPD_TF\minirating.csv')
@@ -140,28 +143,24 @@ nonfiltered_tags = pd.read_csv('ufrgs_CPD_TF\\tags.csv')
 tags = nonfiltered_tags.dropna(subset=['tag']) # exlui tags vazias
 
 # Adição das colunas de média e quantidade de avaliações por jogador ao DataFrame 'players'
-sum_ratings = ratings.groupby('sofifa_id').sum()
 mean_ratings = ratings.groupby('sofifa_id').mean().round(6)
-del sum_ratings['user_id']
+count = ratings.groupby('sofifa_id').size() 
+count.name = 'count'
 del mean_ratings['user_id']
-new_columns = pd.merge(mean_ratings, sum_ratings, on='sofifa_id', how='left')
-new_columns.columns = ['rating', 'num_ratings'] # renomeando colunas
-new_columns['num_ratings'] = new_columns['num_ratings']/new_columns['rating'];
-new_columns = new_columns.astype({'num_ratings': 'int'}) # casting
+new_columns = pd.merge(mean_ratings, count, on='sofifa_id', how='left')
 # (A média dos jogadores não avaliados foi considerada como 0)
 players = pd.merge(players, new_columns, on='sofifa_id', how='left').fillna(0)
+players['count'] = players['count'].astype(int)
 
 # Adição da coluna de médias ao Dataframe 'tags'
-del new_columns['num_ratings']
+del new_columns['count']
 tags = pd.merge(tags, new_columns, on='sofifa_id', how='left').fillna(0)
-
-# Split na coluna de posições do Dataframe 'players'
-players['player_positions'] = players['player_positions'].str.split(r',\s*')
 
 # print(players)
 # print(ratings)
 # print(tags)
-# players.to_csv('dados.csv', index=False)
+# players.to_html('dados.html', index=False)
+
 
 
 # ---------------------------------------- #
@@ -169,34 +168,35 @@ players['player_positions'] = players['player_positions'].str.split(r',\s*')
 
 # 2.1. E1 - TABELA HASH DE JOGADORES;
 
-hashPlayers = HashTable(24697) # 24697 numero primo mais prox de 25000, valor arbitrário para guardar quase 19 mil jogadores na hash
-for index, row in players.iterrows(): # Usa iterrows (método pandas) para iterar sobre todas linhas do Dataframe
-    player_id = row['sofifa_id'] # Guarda o Id do jogador para ser usado como Chave
-    player_info = row.to_dict()  # Guarda todas informações do jogador como um dicionário
-    hashPlayers.insert(player_id, player_info) # Insere cada jogador na HashTable
+hash_players = HashTable(24697) # 24697 numero primo mais prox de 25000, valor arbitrário para guardar quase 19 mil jogadores na hash
+for row in players.itertuples(index=False): # Usa itertuples para iterar sobre todas linhas do Dataframe
+    pl_id = row.sofifa_id # Guarda o Id do jogador para ser usado como Chave
+    pl_info = list(row)  # Guarda todas informações do jogador como uma lista
+    hash_players.insert(pl_id, pl_info) # Insere cada jogador na HashTable
 
 
 # 2.2. E2 - ÁRVORE TRIE DE PREFIXOS DE NOMES DE JOGADORES;
 
 player_names = Trie()
-for index, row in players.iterrows(): # Itera sobre todas linhas do Dataframe 'players'
-    pl_id = row['sofifa_id']
-    pl_name = row['long_name']
+for row in players.itertuples(index=False): # Itera sobre todas linhas do Dataframe 'players'
+    pl_id = row.sofifa_id
+    pl_name = row.long_name
     player_names.insert(pl_name, pl_id)
 # print(player_names.search_prefix('Fer'))
 
 
-# 2.3. E3 - TABELA HASH DE AVALIAÇÕES POR USUARIO;
+# 2.3. E3 - TABELA HASH DE AVALIAÇÕES POR USUÁRIO;
 
-hashRatings = HashTable(HASH_RATINGS_SIZE)
-for index, row in ratings.iterrows(): 
-    user_id = row['user_id']
-    user_info = row.to_dict()
-    hashRatings.insert(user_id, user_info)
+# Agrupa as avaliações de cada usuário em uma lista de listas:
+user_ratings = ratings.groupby('user_id').apply(lambda x: [x.name, x.iloc[:, 1:].values.tolist()]).tolist()
+hash_ratings = HashTable(HASH_RATINGS_SIZE)
+for user in user_ratings: 
+    user_id = user[0]
+    user_info = user[1] # Lista de listas '[sofifa_id, avaliação do user]'
+    hash_ratings.insert(user_id, user_info) # Insere a lista de avaliações de cada usuário na HashTable
 
 
 # 2.4. E4 - ÁRVORE TRIE DE JOGADORES POR TAG;
-# em caso de problema, checar essa parte!!!
 
 player_tags = Trie()
 for row in tags.itertuples(index=False): # Itera sobre todas linhas do Dataframe 'tags'
@@ -205,23 +205,18 @@ for row in tags.itertuples(index=False): # Itera sobre todas linhas do Dataframe
     pl_rate = row.rating
     player_tags.insert(pl_tag, (pl_id, pl_rate))
 
-# EXEMPLO DE BUSCA:
-# buf1 = list(set(player_tags.search_word('Brazil'))) # 'set' remove duplicatas
-# buf2 = list(set(player_tags.search_word('Dribbler')))
-# intersec = [i for i in buf1 if i in buf2]
-# print(radix_sort(intersec))
-# print(len(intersec))
-
-
 # 2.5. E5 - TABELA DE JOGADORES POR POSIÇÃO; 
 
 positions = ['GK', 'RB', 'CB', 'LB', 'CDM', 'CM', 'CAM', 'RM', 'LM', 'RW', 'LW', 'CF', 'ST']
 position_listed = []
 
+# Split na coluna de posições do Dataframe 'players'
+players['player_positions'] = players['player_positions'].str.split(r',\s*')
+
 # Filtragem de jogadores por posição e número de avaliações
 for pos in positions:
     # Detecta jogadores que possuem a posição e foram avaliados
-    condition = (players['player_positions'].apply(lambda x: pos in x)) & (players['num_ratings'] > 0)
+    condition = (players['player_positions'].apply(lambda x: pos in x)) & (players['count'] > 0)
     # Cria e ordena uma lista de tuplas com os IDs e médias dos jogadores detectados
     new_list = players[condition].apply(lambda r: (r['sofifa_id'], r['rating']), axis=1).tolist()
     new_list = radix_sort(new_list)
@@ -231,10 +226,72 @@ for pos in positions:
 # A estrutura atual é uma lista de tuplas, onde cada tupla contém uma sigla e outra lista de tuplas :)
 
 
-# ---------------------------------------- #
-# 3. FUNÇÕES DE BUSCA;
 
-# 3.1. PREFIXOS DE NOMES DE JOGADORES;
-# 3.2. REVISÕES DE JOGADORES;
+# ---------------------------------------- #
+# 3. FUNÇÕES DE BUSCA E EXIBIÇÃO;
+
+# 3.1. PREFIXOS DE NOMES DE JOGADORES;  - Pedro
+#      => sofifa_id,short_name,long_name,player_positions,rating,count
+
+
+# 3.2. REVISÕES DE JOGADORES;           - Pedro
+#      => sofifa_id,short_name,long_name,global_rating,count,user_rating
+
+
 # 3.3. MELHORES JOGADORES POR POSIÇÃO;
+
+def top_players_query3(N, pos, filename):
+    i = 0;
+    searching = 1;
+    while searching and i<len(positions):
+        if pos == position_listed[i][0]:
+            player_list = [tuple[0] for tuple in position_listed[i][1]]
+            searching = 0
+        i += 1
+    
+    if searching == 1:
+        print("Invalid position")
+    elif len(player_list) <= N:
+        ids = player_list
+    else:
+        ids = player_list[0:N]
+
+    # Cria .html com a tabela de resultados:
+    headers = ['sofifa_id','short_name','long_name','player_positions','nationality','club_name','league_name','rating','count']
+    data = []
+    for pl_id in ids:
+        pl_info = hash_players.search(pl_id)
+        data.append(pl_info)
+    top_players = pd.DataFrame(data, columns=headers)
+    top_players.to_html(filename+'.html', index=False)
+
+
 # 3.4. TAGS E JOGADORES RELACIONADOS;
+
+def tagged_players_query4(tag_list, filename):
+    cj = set(player_tags.search_word(tag_list[0]))
+    for tag in tag_list[1:]:
+        buf = set(player_tags.search_word(tag))
+        cj = cj & buf
+    ids = radix_sort(list(cj))
+    ids = [tuple[0] for tuple in ids]
+
+    # Cria .html com a tabela de resultados:
+    headers = ['sofifa_id','short_name','long_name','player_positions','nationality','club_name','league_name','rating','count']
+    data = []
+    for pl_id in ids:
+        pl_info = hash_players.search(pl_id)
+        data.append(pl_info)
+    tagged_players = pd.DataFrame(data, columns=headers)
+    tagged_players.to_html(filename+'.html', index=False)
+    
+
+
+# ---------------------------------------- #
+# 4. INTERFACE DE USO;
+
+# EXEMPLOS DAS BUSCAS:
+print(hash_ratings.search(111064))
+
+top_players_query3(80,'GK','top80GK')
+tagged_players_query4(['Brazil','Dribbler'], 'tagsBrazilDribbler')
