@@ -203,6 +203,7 @@ for row in tags.itertuples(index=False): # Itera sobre todas linhas do Dataframe
     pl_rate = row.rating
     player_tags.insert(pl_tag, (pl_id, pl_rate))
 
+
 # 2.5. E5 - TABELA DE JOGADORES POR POSIÇÃO; 
 
 positions = ['GK', 'RB', 'CB', 'LB', 'CDM', 'CM', 'CAM', 'RM', 'LM', 'RW', 'LW', 'CF', 'ST']
