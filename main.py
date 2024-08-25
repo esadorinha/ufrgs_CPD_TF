@@ -1,5 +1,4 @@
 import pandas as pd
-from tabulate import tabulate
 from os import system
 import re
 
@@ -136,9 +135,9 @@ class Trie:
 # ---------------------------------------- #
 # 1. TRATAMENTO INICIAL DOS DADOS;
 
-#HASH_RATINGS_SIZE = 13001 # lembrar de alterar esse valor caso trocar de Miniratings para Ratings
+# HASH_RATINGS_SIZE = 13001 # lembrar de alterar esse valor caso trocar de Miniratings para Ratings
 HASH_RATINGS_SIZE = 180043 # substituir quando for trabalhar com rating.csv
-#MIN_RATING_COUNT = 0
+# MIN_RATING_COUNT = 0
 MIN_RATING_COUNT = 1000 # substituir quando for trabalhar com rating.csv
 
 # Criação dos DataFrames a partir dos arquivos
@@ -262,9 +261,6 @@ def player_prefix_query1(prefix, filename):
     print('=> Arquivo HTML criado!')
 
     
-
-
-
 # 3.2. REVISÕES DE JOGADORES;
 
 def user_reviews_query2(user_id, filename):
@@ -352,11 +348,19 @@ def top_players_query3(N, pos, filename):
 # 3.4. TAGS E JOGADORES RELACIONADOS;
 
 def tagged_players_query4(tag_list, filename):
-    cj = set(player_tags.search_word(tag_list[0]))
-    for tag in tag_list[1:]:
-        buf = set(player_tags.search_word(tag))
-        cj = cj & buf
-    ids = radix_sort(list(cj))
+    id_lists = [] 
+    for tag in tag_list:
+        new_list = player_tags.search_word(tag)
+        if not new_list:    # Se alguma das listas for vazia, o conjunto resultante será vazio;
+            print('=> Tag não encontrada;')
+            return 0
+        id_lists.append(new_list)
+
+    set_list = [set(item) for item in id_lists]
+    final_set = set_list[0]
+    for cur_set in set_list[1:]:
+        final_set = final_set & cur_set
+    ids = radix_sort(list(final_set))
     ids = [tuple[0] for tuple in ids]
     
     # Se a busca não obtiver resultado, finaliza
@@ -389,11 +393,11 @@ while query != '0':
     print('Consulta por usuário: digite \"user<ID do usuário buscado>\";')
     print('Consulta por posição: digite \"top<número><posição entre apóstrofes>\";')
     print('Consulta por tag: digite \"tags<tags entre apóstrofes>\";')
-    print('Para sair, digite \'0\';\n')
+    print('Para sair, digite \"0\";\n')
 
     query = input()
     if query == '0':
-        print('=> Sair selecionado')
+        print('=> Sair selecionado;')
     elif query[:3] == 'top':        # Lê, por exemplo "top10'GK'";
         query_data = query[3:].split('\'', 1)
         if str.isdigit(query_data[0]):
@@ -411,11 +415,9 @@ while query != '0':
             user_reviews_query2(int(query_data), query)
         else:
             print('=> ID inválido;')
-    elif query[:6] == 'player':     # Lê, por exemplo, ____;
+    elif query[:6] == 'player':     # Lê, por exemplo, "playerFER";
         query_data = query[6] + query[7:].lower()
-        print('player') 
         player_prefix_query1(query_data, query)
-
     else:
         print('=> Busca inválida;')
 
