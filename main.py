@@ -136,11 +136,14 @@ class Trie:
 # ---------------------------------------- #
 # 1. TRATAMENTO INICIAL DOS DADOS;
 
-HASH_RATINGS_SIZE = 13001 # lembrar de alterar esse valor caso trocar de Miniratings para Ratings
-# HASH_RATINGS_SIZE = 180043 # valor da troca, baseado no número de usuários do arquivo grande
+#HASH_RATINGS_SIZE = 13001 # lembrar de alterar esse valor caso trocar de Miniratings para Ratings
+HASH_RATINGS_SIZE = 180043 # substituir quando for trabalhar com rating.csv
+#MIN_RATING_COUNT = 0
+MIN_RATING_COUNT = 1000 # substituir quando for trabalhar com rating.csv
 
 # Criação dos DataFrames a partir dos arquivos
-ratings = pd.read_csv('ufrgs_CPD_TF\minirating.csv')
+#ratings = pd.read_csv('ufrgs_CPD_TF\minirating.csv')
+ratings = pd.read_csv('ufrgs_CPD_TF\\rating.csv')
 players = pd.read_csv('ufrgs_CPD_TF\players.csv')
 nonfiltered_tags = pd.read_csv('ufrgs_CPD_TF\\tags.csv')
 tags = nonfiltered_tags.dropna(subset=['tag']) # exlui tags vazias
@@ -215,7 +218,7 @@ players['player_positions'] = players['player_positions'].str.split(r',\s*')
 # Filtragem de jogadores por posição e número de avaliações
 for pos in positions:
     # Detecta jogadores que possuem a posição e foram avaliados
-    condition = (players['player_positions'].apply(lambda x: pos in x)) & (players['count'] > 0)
+    condition = (players['player_positions'].apply(lambda x: pos in x)) & (players['count'] > MIN_RATING_COUNT)
     # Cria e ordena uma lista de tuplas com os IDs e médias dos jogadores detectados
     new_list = players[condition].apply(lambda r: (r['sofifa_id'], r['rating']), axis=1).tolist()
     new_list = radix_sort(new_list)
@@ -231,6 +234,35 @@ for pos in positions:
 
 # 3.1. PREFIXOS DE NOMES DE JOGADORES;  - Pedro
 #      => sofifa_id,short_name,long_name,player_positions,rating,count
+def player_prefix_query1(prefix, filename):
+    ids = player_names.search_prefix(prefix)
+    if not ids:
+        print('=> Busca sem resultados;')
+        return 0
+    
+    ordered_pl_list = []    # cria lista de tuplas onde cada tupla é
+                            # 1. Informações do jogador
+                            # 2. Rating Global
+    for pl_id in ids:
+        pl_info = hash_players.search(pl_id)
+        ordered_pl_list.append((pl_info[:4] + pl_info[7:], pl_info[7]))
+    
+    ordered_pl_list = radix_sort(ordered_pl_list)
+
+    # Cria .html com a tabela de resultados:
+    headers = ['sofifa_id','short_name','long_name','player_positions','rating','count']
+    data = []
+
+    for player in ordered_pl_list:
+        data.append(player[0])
+
+    player_prefix = pd.DataFrame(data, columns=headers)
+    player_prefix.to_html(filename+'.html', index=False)
+
+    print('=> Arquivo HTML criado!')
+
+    
+
 
 
 # 3.2. REVISÕES DE JOGADORES;
@@ -349,7 +381,9 @@ def tagged_players_query4(tag_list, filename):
 # 4. INTERFACE DE USO;
 
 system('cls')
-while True:         # sim, eu traí o movimento...
+query = '1'
+
+while query != '0':  
     print('# ---------------------------------------- #\n\t\t    MENU\n# ---------------------------------------- #')
     print('Consulta por nome: digite \"player<nome/prefixo buscado>\";')
     print('Consulta por usuário: digite \"user<ID do usuário buscado>\";')
@@ -359,7 +393,7 @@ while True:         # sim, eu traí o movimento...
 
     query = input()
     if query == '0':
-        break
+        print('=> Sair selecionado')
     elif query[:3] == 'top':        # Lê, por exemplo "top10'GK'";
         query_data = query[3:].split('\'', 1)
         if str.isdigit(query_data[0]):
@@ -378,9 +412,9 @@ while True:         # sim, eu traí o movimento...
         else:
             print('=> ID inválido;')
     elif query[:6] == 'player':     # Lê, por exemplo, ____;
-        query_data = query[6:]
+        query_data = query[6] + query[7:].lower()
         print('player') 
-        # falta a função
+        player_prefix_query1(query_data, query)
 
     else:
         print('=> Busca inválida;')
