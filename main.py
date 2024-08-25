@@ -1,5 +1,8 @@
 import pandas as pd
 from tabulate import tabulate
+from os import system
+import re
+
 
 # ---------------------------------------- #
 # 0. FUNÇÕES DE USO GERAL;
@@ -134,7 +137,7 @@ class Trie:
 # 1. TRATAMENTO INICIAL DOS DADOS;
 
 HASH_RATINGS_SIZE = 13001 # lembrar de alterar esse valor caso trocar de Miniratings para Ratings
-# HASH_RATINGS_SIZE = 180041 # valor da troca, baseado no número de usuários do arquivo grande
+# HASH_RATINGS_SIZE = 180043 # valor da troca, baseado no número de usuários do arquivo grande
 
 # Criação dos DataFrames a partir dos arquivos
 ratings = pd.read_csv('ufrgs_CPD_TF\minirating.csv')
@@ -155,11 +158,6 @@ players['count'] = players['count'].astype(int)
 # Adição da coluna de médias ao Dataframe 'tags'
 del new_columns['count']
 tags = pd.merge(tags, new_columns, on='sofifa_id', how='left').fillna(0)
-
-# print(players)
-# print(ratings)
-# print(tags)
-# players.to_html('dados.html', index=False)
 
 
 
@@ -234,8 +232,52 @@ for pos in positions:
 #      => sofifa_id,short_name,long_name,player_positions,rating,count
 
 
-# 3.2. REVISÕES DE JOGADORES;           - Pedro
-#      => sofifa_id,short_name,long_name,global_rating,count,user_rating
+# 3.2. REVISÕES DE JOGADORES;
+
+def user_reviews_query2(user_id, filename):
+    rating_list = hash_ratings.search(user_id)
+    if not rating_list:
+        print('=> Usuário não encontrado;')
+        return 0
+    
+    rating_ordered = []
+    for rating in rating_list:
+        pl_id = int(rating[0])
+        gb_rating = hash_players.search(pl_id)[7]
+        rating_ordered.append((int(rating[0]), gb_rating, rating[1]))
+
+    # Ordena em função do rating global
+    rating_ordered = radix_sort(rating_ordered)
+
+    # Ordena em função da avaliação do usuário, mantendo estável
+    esc = [[], [], [], [], [], []]
+    for rating in rating_ordered:
+        d = int((rating[2] % 1)*10)
+        esc[d].append(rating) 
+    rating_ordered = sum(esc[::-1], [])
+
+    esc = [[], [], [], [], [], []]
+    for rating in rating_ordered:
+        esc[int(rating[2])].append(rating)
+    rating_ordered = sum(esc[::-1], [])
+    rating_ordered = rating_ordered[:20]
+
+     # Se a busca não obtiver resultado, finaliza
+    if not rating_ordered:
+        print('=> Busca sem resultados;')
+        return 0
+
+    # Cria .html com a tabela de resultados:
+    headers = ['sofifa_id','short_name','long_name','global_rating','count','user_rating']
+    data =[]
+    for rating in rating_ordered:
+        pl_id = int(rating[0])
+        pl_info = hash_players.search(pl_id)
+        data.append(pl_info[:3] + pl_info[7:9] + [rating[2]])
+    user_reviews = pd.DataFrame(data, columns=headers)
+    user_reviews.to_html(filename+'.html', index=False)
+
+    print('=> Arquivo HTML criado!')
 
 
 # 3.3. MELHORES JOGADORES POR POSIÇÃO;
@@ -250,11 +292,17 @@ def top_players_query3(N, pos, filename):
         i += 1
     
     if searching == 1:
-        print("Invalid position")
+        print('=> Posição inválida!')
+        return 0
     elif len(player_list) <= N:
         ids = player_list
     else:
         ids = player_list[0:N]
+
+     # Se a busca não obtiver resultado, finaliza
+    if not ids:
+        print('=> Busca sem resultados;')
+        return 0
 
     # Cria .html com a tabela de resultados:
     headers = ['sofifa_id','short_name','long_name','player_positions','nationality','club_name','league_name','rating','count']
@@ -264,6 +312,8 @@ def top_players_query3(N, pos, filename):
         data.append(pl_info)
     top_players = pd.DataFrame(data, columns=headers)
     top_players.to_html(filename+'.html', index=False)
+
+    print('=> Arquivo HTML criado!')
 
 
 # 3.4. TAGS E JOGADORES RELACIONADOS;
@@ -275,6 +325,11 @@ def tagged_players_query4(tag_list, filename):
         cj = cj & buf
     ids = radix_sort(list(cj))
     ids = [tuple[0] for tuple in ids]
+    
+    # Se a busca não obtiver resultado, finaliza
+    if not ids:
+        print('=> Busca sem resultados;')
+        return 0
 
     # Cria .html com a tabela de resultados:
     headers = ['sofifa_id','short_name','long_name','player_positions','nationality','club_name','league_name','rating','count']
@@ -284,14 +339,52 @@ def tagged_players_query4(tag_list, filename):
         data.append(pl_info)
     tagged_players = pd.DataFrame(data, columns=headers)
     tagged_players.to_html(filename+'.html', index=False)
+
+    print('=> Arquivo HTML criado!')
     
 
 
 # ---------------------------------------- #
 # 4. INTERFACE DE USO;
 
-# EXEMPLOS DAS BUSCAS:
-print(hash_ratings.search(111064))
+system('cls')
+while True:         # sim, eu traí o movimento...
+    print('# ---------------------------------------- #\n\t\t    MENU\n# ---------------------------------------- #')
+    print('Consulta por nome: digite \"player<nome/prefixo buscado>\";')
+    print('Consulta por usuário: digite \"user<ID do usuário buscado>\";')
+    print('Consulta por posição: digite \"top<número><posição entre apóstrofes>\";')
+    print('Consulta por tag: digite \"tags<tags entre apóstrofes>\";')
+    print('Para sair, digite \'0\';\n')
 
-top_players_query3(80,'GK','top80GK')
-tagged_players_query4(['Brazil','Dribbler'], 'tagsBrazilDribbler')
+    query = input()
+    if query == '0':
+        break
+    elif query[:3] == 'top':        # Lê, por exemplo "top10'GK'";
+        query_data = query[3:].split('\'', 1)
+        if str.isdigit(query_data[0]):
+            query_num = int(query_data[0])
+            query_pos = query_data[1][:-1]
+            top_players_query3(query_num, query_pos, query)
+        else:
+            print('=> Número inválido;')
+    elif query[:4] == 'tags':       # Lê, por exemplo "tags 'Brazil' 'Dribbler'"; a falta das apóstrofes ocasiona ERRO;
+        query_data = re.findall(r"'(.*?)'", query[4:])
+        tagged_players_query4(query_data, query)
+    elif query[:4] == 'user':       # Lê, por exemplo, "user213908";
+        query_data = query[4:]
+        if str.isdigit(query_data):
+            user_reviews_query2(int(query_data), query)
+        else:
+            print('=> ID inválido;')
+    elif query[:6] == 'player':     # Lê, por exemplo, ____;
+        query_data = query[6:]
+        print('player') 
+        # falta a função
+
+    else:
+        print('=> Busca inválida;')
+
+    print('\nPressione ENTER para continuar...')
+    buf = input()
+    system('cls')
+system('cls')
